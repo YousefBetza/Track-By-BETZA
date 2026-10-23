@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>لوحة تحكم الإدارة | Taqssem Groups</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Arial, sans-serif; }
+  body { background: #f4f5fb; min-height: 100vh; padding: 20px; }
+  .container { max-width: 700px; margin: 0 auto; }
+  h1 { color: #333; font-size: 24px; margin-bottom: 20px; }
+  .box { background: #fff; border-radius: 16px; padding: 25px; box-shadow: 0 4px 20px rgba(0,0,0,.08); margin-bottom: 20px; }
+  input { width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 10px; font-size: 15px; margin-bottom: 12px; direction: ltr; text-align: left; }
+  button { padding: 12px 20px; background: #667eea; color: #fff; border: none; border-radius: 10px; font-size: 15px; font-weight: bold; cursor: pointer; }
+  button:hover { background: #5568d3; }
+  .btn-approve { background: #27ae60; margin-inline-start: 8px; }
+  .btn-reject { background: #e74c3c; margin-inline-start: 8px; }
+  .btn-save { background: #27ae60; }
+  .logout { background: #888; float: left; }
+  .req { border: 1px solid #eee; border-radius: 12px; padding: 14px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+  .req-info { font-size: 14px; line-height: 1.8; }
+  .req-info b { color: #333; }
+  .badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: bold; }
+  .pending { background: #fff3cd; color: #856404; }
+  .approved { background: #d4edda; color: #155724; }
+  .rejected { background: #f8d7da; color: #721c24; }
+  h2 { color: #555; font-size: 18px; margin-bottom: 15px; }
+  label { display: block; margin-bottom: 6px; color: #555; font-size: 14px; }
+  .empty { text-align: center; color: #999; padding: 20px; }
+  #msg { padding: 12px; border-radius: 10px; margin-bottom: 15px; text-align: center; display: none; }
+  .ok { background: #d4edda; color: #155724; display: block; }
+  .err { background: #f8d7da; color: #721c24; display: block; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- شاشة تسجيل الدخول -->
+  <div id="loginBox" class="box" style="max-width: 400px; margin: 60px auto;">
+    <h1>🔐 دخول الإدارة</h1>
+    <div id="msg"></div>
+    <input id="email" type="email" placeholder="البريد الإلكتروني">
+    <input id="password" type="password" placeholder="كلمة السر">
+    <button id="loginBtn" style="width:100%">دخول</button>
+  </div>
+
+  <!-- لوحة التحكم -->
+  <div id="panel" hidden>
+    <h1>📋 لوحة التحكم <button id="logoutBtn" class="logout">خروج</button></h1>
+    <div id="msg2"></div>
+
+    <div class="box">
+      <h2>🔗 روابط الجروبات</h2>
+      <label>رابط جروب Software</label>
+      <input id="swLink" placeholder="https://chat.whatsapp.com/...">
+      <label>رابط جروب Network</label>
+      <input id="netLink" placeholder="https://chat.whatsapp.com/...">
+      <button id="saveLinks" class="btn-save">💾 حفظ الروابط</button>
+    </div>
+
+    <div class="box">
+      <h2>📨 طلبات الطلاب</h2>
+      <div id="requestsList"><p class="empty">جاري التحميل...</p></div>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+  // ⬇️⬇️ ضع إعدادات firebaseConfig بتاعتك هنا (نفس اللي في صفحة الطالب) ⬇️⬇️
+  const firebaseConfig = {
+    apiKey: "ضع_القيمة_هنا",
+    authDomain: "ضع_القيمة_هنا",
+    projectId: "ضع_القيمة_هنا",
+    storageBucket: "ضع_القيمة_هنا",
+    messagingSenderId: "ضع_القيمة_هنا",
+    appId: "ضع_القيمة_هنا"
+  };
+
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getFirestore, doc, getDoc, setDoc, collection, query, orderBy, onSnapshot, updateDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+  const auth = getAuth(app);
+
+  const loginBox = document.getElementById('loginBox');
+  const panel = document.getElementById('panel');
+  const msg = document.getElementById('msg');
+  const msg2 = document.getElementById('msg2');
+
+  function showMsg(el, text, isErr) {
+    el.textContent = text;
+    el.className = isErr ? 'err' : 'ok';
+  }
+
+  // تسجيل الدخول
+  document.getElementById('loginBtn').addEventListener('click', async () => {
+    const email = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+    } catch (e) {
+      showMsg(msg, '❌ بيانات الدخول غلط، حاول تاني', true);
+    }
+  });
+
+  document.getElementById('logoutBtn').addEventListener('click', () => signOut(auth));
+
+  // متابعة حالة الدخول
+  onAuthStateChanged(auth, async (user) => {
+    if (user) {
+      loginBox.hidden = true;
+      panel.hidden = false;
+      loadSettings();
+      listenToRequests();
+    } else {
+      loginBox.hidden = false;
+      panel.hidden = true;
+    }
+  });
+
+  // تحميل الروابط الحالية
+  async function loadSettings() {
+    const snap = await getDoc(doc(db, 'settings', 'general'));
+    if (snap.exists()) {
+      document.getElementById('swLink').value = snap.data().softwareGroupLink || '';
+      document.getElementById('netLink').value = snap.data().networkGroupLink || '';
+    }
+  }
+
+  // حفظ الروابط
+  document.getElementById('saveLinks').addEventListener('click', async () => {
+    try {
+      await setDoc(doc(db, 'settings', 'general'), {
+        softwareGroupLink: document.getElementById('swLink').value.trim(),
+        networkGroupLink: document.getElementById('netLink').value.trim(),
+        allowAutoShow: true
+      });
+      showMsg(msg2, '✅ تم حفظ الروابط', false);
+      setTimeout(() => msg2.className = '', 3000);
+    } catch (e) {
+      showMsg(msg2, '❌ حصل خطأ أثناء الحفظ', true);
+    }
+  });
+
+  // عرض الطلبات لحظيًا
+  function listenToRequests() {
+    const q = query(collection(db, 'requests'), orderBy('createdAt', 'desc'));
+    onSnapshot(q, (snapshot) => {
+      const list = document.getElementById('requestsList');
+      if (snapshot.empty) {
+        list.innerHTML = '<p class="empty">مفيش طلبات لحد دلوقتي</p>';
+        return;
+      }
+      list.innerHTML = '';
+      snapshot.forEach((docSnap) => {
+        const r = docSnap.data();
+        const statusTxt = { pending: '⏳ مستني', approved: '✅ مقبول', rejected: '❌ مرفوض' }[r.status] || r.status;
+        const div = document.createElement('div');
+        div.className = 'req';
+        div.innerHTML = `
+          <div class="req-info">
+            <b>${r.whatsappName || 'بدون اسم واتساب'}</b>
+            <span class="badge ${r.status}">${statusTxt}</span><br>
+            📱 <span dir="ltr">${r.phone}</span><br>
+            🎓 الشعبة: ${r.track === 'network' ? 'Network' : 'Software'}<br>
+            🕐 ${r.createdAt && r.createdAt.toDate ? r.createdAt.toDate().toLocaleString('ar-EG') : ''}
+          </div>
+          <div>
+            ${r.status === 'pending' ? `
+              <button class="btn-approve" onclick="updateStatus('${docSnap.id}', 'approved')">قبول</button>
+              <button class="btn-reject" onclick="updateStatus('${docSnap.id}', 'rejected')">رفض</button>
+            ` : ''}
+          </div>`;
+        list.appendChild(div);
+      });
+    });
+  }
+
+  window.updateStatus = async (id, status) => {
+    try {
+      await updateDoc(doc(db, 'requests', id), { status });
+    } catch (e) {
+      alert('حصل خطأ، حاول تاني');
+    }
+  };
+</script>
+</body>
+</html>

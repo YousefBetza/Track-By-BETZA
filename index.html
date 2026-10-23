@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Taqssem Groups | اعرف جروبك</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Arial, sans-serif; }
+  body { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+  .card { background: #fff; border-radius: 20px; padding: 30px 25px; width: 100%; max-width: 420px; box-shadow: 0 20px 60px rgba(0,0,0,.3); }
+  h1 { font-size: 26px; text-align: center; color: #333; margin-bottom: 5px; }
+  .sub { text-align: center; color: #777; font-size: 14px; margin-bottom: 25px; }
+  input { width: 100%; padding: 14px; border: 2px solid #e0e0e0; border-radius: 12px; font-size: 16px; margin-bottom: 12px; direction: ltr; text-align: left; }
+  input#waName { direction: rtl; text-align: right; }
+  input:focus { border-color: #667eea; outline: none; }
+  button { width: 100%; padding: 14px; background: #667eea; color: #fff; border: none; border-radius: 12px; font-size: 17px; font-weight: bold; cursor: pointer; }
+  button:hover { background: #5568d3; }
+  button:disabled { opacity: .6; cursor: wait; }
+  #result { margin-top: 20px; }
+  .student-box { background: #f8f9ff; border: 2px solid #667eea22; border-radius: 14px; padding: 15px; margin-top: 15px; }
+  .row { display: flex; justify-content: space-between; padding: 10px 5px; border-bottom: 1px solid #eee; font-size: 15px; }
+  .row:last-child { border-bottom: none; }
+  .label { color: #888; }
+  .value { font-weight: bold; color: #333; }
+  .group-link { display: block; text-align: center; margin-top: 15px; padding: 14px; background: #25d366; color: #fff; border-radius: 12px; text-decoration: none; font-size: 17px; font-weight: bold; }
+  #error { margin-top: 20px; padding: 14px; background: #ffe9e9; color: #c0392b; border-radius: 12px; text-align: center; font-size: 15px; }
+  .note { margin-top: 15px; text-align: center; font-size: 12px; color: #999; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>👥 Taqssem Groups</h1>
+  <p class="sub">اكتب رقم موبايلك واعرف جروبك على طول</p>
+
+  <form id="lookupForm">
+    <input id="phone" type="tel" inputmode="numeric" placeholder="01xxxxxxxxx" required>
+    <input id="waName" type="text" placeholder="اسمك على واتساب (اختياري)">
+    <button id="btn" type="submit">اعرف جروبك 🚀</button>
+  </form>
+
+  <div id="result" hidden></div>
+  <div id="error" hidden></div>
+  <p class="note">الرقم بيتحقق من كشوف الدفعة الرسمية بس</p>
+</div>
+
+<script type="module">
+  // ⬇️⬇️ ضع إعدادات firebaseConfig بتاعتك هنا (من ملاحظاتك) ⬇️⬇️
+  const firebaseConfig = {
+    apiKey: "AIzaSyAky9Ig-e-DAZM0BNzJ9XEv1-gHfb-wjTU",
+    authDomain: "taqssem-groups.firebaseapp.com",
+    projectId: "taqssem-groups",
+    storageBucket: "taqssem-groups.firebasestorage.app",
+    messagingSenderId: "293858870250",
+    appId: "1:293858870250:web:77e76bbe133e020454e893"
+  };
+
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getFirestore, doc, getDoc, collection, addDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+
+  const form = document.getElementById('lookupForm');
+  const btn = document.getElementById('btn');
+  const resultBox = document.getElementById('result');
+  const errorBox = document.getElementById('error');
+
+  function normalizePhone(raw) {
+    let p = raw.replace(/[\s\-()]/g, '');
+    if (p.startsWith('+20')) p = '0' + p.slice(3);
+    else if (p.startsWith('0020')) p = '0' + p.slice(4);
+    return p;
+  }
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    resultBox.hidden = true;
+    errorBox.hidden = true;
+    btn.disabled = true;
+    btn.textContent = 'بنبحث... ⏳';
+
+    const phone = normalizePhone(document.getElementById('phone').value);
+    const waName = document.getElementById('waName').value.trim();
+
+    try {
+      // 1) البحث عن الطالب (الرقم هو ID المستند)
+      const studentSnap = await getDoc(doc(db, 'students', phone));
+      if (!studentSnap.exists()) {
+        errorBox.textContent = '❌ الرقم ده مش مسجل في دفعتنا. لو متأكد من رقمك تواصل مع الإدارة.';
+        errorBox.hidden = false;
+        return;
+      }
+      const st = studentSnap.data();
+
+      // 2) جلب اللينكات من الإعدادات
+      const settingsSnap = await getDoc(doc(db, 'settings', 'general'));
+      const settings = settingsSnap.exists() ? settingsSnap.data() : {};
+      const link = st.track === 'network' ? settings.networkGroupLink : settings.softwareGroupLink;
+      const trackName = st.track === 'network' ? 'Network 🌐' : 'Software 💻';
+
+      // 3) تسجيل الطلب للإدارة
+      try {
+        await addDoc(collection(db, 'requests'), {
+          phone: phone,
+          whatsappName: waName,
+          track: st.track,
+          status: 'pending',
+          createdAt: new Date()
+        });
+      } catch (err) { console.log('تعذر تسجيل الطلب:', err); }
+
+      // 4) عرض النتيجة
+      resultBox.innerHTML = `
+        <div class="student-box">
+          <div class="row"><span class="label">الاسم</span><span class="value">${st.name || '-'}</span></div>
+          <div class="row"><span class="label">الرقم الأكاديمي</span><span class="value">${st.academicNumber || '-'}</span></div>
+          <div class="row"><span class="label">رقم الموبايل</span><span class="value" dir="ltr">${phone}</span></div>
+          <div class="row"><span class="label">الشعبة</span><span class="value">${trackName}</span></div>
+        </div>
+        ${link ? `<a class="group-link" href="${link}" target="_blank">انضم لجروب ${trackName} 👈</a>` : '<p class="note">لينك الجروب هيتضاف قريب</p>'}
+      `;
+      resultBox.hidden = false;
+    } catch (err) {
+      errorBox.textContent = '⚠️ حصل خطأ، جرب تاني بعد شوية.';
+      errorBox.hidden = false;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'اعرف جروبك 🚀';
+    }
+  });
+</script>
+</body>
+</html>
